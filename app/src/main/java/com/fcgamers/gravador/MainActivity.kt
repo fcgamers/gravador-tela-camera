@@ -12,6 +12,10 @@ import android.view.Gravity
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
+import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -21,15 +25,17 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_AUTO_START = "auto_start"
-        private const val PREFS = "config"
         private const val PREF_SINGLE = "video_unico"
+        private const val SHAPE_ID_BASE = 100
     }
 
     private lateinit var status: TextView
     private lateinit var button: Button
     private lateinit var singleBox: CheckBox
+    private lateinit var shapeGroup: RadioGroup
+    private lateinit var sizeBar: SeekBar
 
-    private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    private val prefs by lazy { getSharedPreferences(CameraPip.PREFS, Context.MODE_PRIVATE) }
 
     private val permissions = buildList {
         add(Manifest.permission.CAMERA)
@@ -66,11 +72,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val pad = (24 * resources.displayMetrics.density).toInt()
+        val d = resources.displayMetrics.density
+        val pad = (24 * d).toInt()
+        val gap = (16 * d).toInt()
+
         status = TextView(this).apply {
             textSize = 16f
             gravity = Gravity.CENTER
         }
+
         singleBox = CheckBox(this).apply {
             text = "Vídeo único: câmera no canto da tela"
             isChecked = prefs.getBoolean(PREF_SINGLE, true)
@@ -78,19 +88,80 @@ class MainActivity : ComponentActivity() {
                 prefs.edit().putBoolean(PREF_SINGLE, checked).apply()
             }
         }
+
+        val windowTitle = TextView(this).apply {
+            text = "Janela da câmera"
+            textSize = 18f
+            setPadding(0, gap, 0, 0)
+        }
+        val windowHint = TextView(this).apply {
+            text = "Na gravação: arraste a janelinha para mover, use dois dedos para mudar o tamanho " +
+                "e dê dois toques para trocar o formato. O que você ajustar fica salvo."
+            textSize = 13f
+        }
+
+        val labels = listOf("Círculo", "Quadrado", "Retângulo")
+        shapeGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.HORIZONTAL
+            labels.forEachIndexed { i, label ->
+                addView(RadioButton(context).apply {
+                    id = SHAPE_ID_BASE + i
+                    text = label
+                })
+            }
+            check(SHAPE_ID_BASE + prefs.getInt(CameraPip.PREF_SHAPE, CameraPip.SHAPE_SQUARE).coerceIn(0, 2))
+            setOnCheckedChangeListener { _, checkedId ->
+                prefs.edit().putInt(CameraPip.PREF_SHAPE, checkedId - SHAPE_ID_BASE).apply()
+            }
+        }
+
+        val sizeLabel = TextView(this).apply {
+            text = "Tamanho"
+            textSize = 14f
+        }
+        sizeBar = SeekBar(this).apply {
+            max = (CameraPip.MAX_SIZE - CameraPip.MIN_SIZE).toInt()
+            progress = (prefs.getFloat(CameraPip.PREF_SIZE, CameraPip.DEFAULT_SIZE) - CameraPip.MIN_SIZE)
+                .toInt().coerceIn(0, max)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(bar: SeekBar, value: Int, fromUser: Boolean) {
+                    if (fromUser) {
+                        prefs.edit().putFloat(CameraPip.PREF_SIZE, CameraPip.MIN_SIZE + value).apply()
+                    }
+                }
+
+                override fun onStartTrackingTouch(bar: SeekBar) {}
+                override fun onStopTrackingTouch(bar: SeekBar) {}
+            })
+        }
+
+        val resetButton = Button(this).apply {
+            text = "Voltar a janela para o canto"
+            setOnClickListener {
+                prefs.edit().remove(CameraPip.PREF_HAS_POS).apply()
+                Toast.makeText(context, "Posição redefinida", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         button = Button(this).apply {
             setOnClickListener { onButton() }
         }
-        setContentView(
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(pad, pad, pad, pad)
-                addView(status)
-                addView(singleBox)
-                addView(button)
-            }
-        )
+
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(pad, pad, pad, pad)
+            addView(status)
+            addView(singleBox)
+            addView(windowTitle)
+            addView(windowHint)
+            addView(shapeGroup)
+            addView(sizeLabel)
+            addView(sizeBar)
+            addView(resetButton)
+            addView(button)
+        }
+        setContentView(ScrollView(this).apply { addView(column) })
 
         if (intent.getBooleanExtra(EXTRA_AUTO_START, false) && !RecorderService.isRecording) {
             startFlow()

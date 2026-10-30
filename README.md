@@ -17,6 +17,16 @@ Não existe botão na tela durante a gravação, então nenhum botão do app apa
 ### Dois modos (caixa de seleção no app)
 
 - **Vídeo único (padrão):** a câmera traseira aparece numa janelinha no canto inferior direito da tela e é gravada junto com ela, em um arquivo só, `gravacao_AAAAMMDD_HHMMSS.mp4`. A janelinha já aparece durante a contagem, para você enquadrar. Neste modo a autorização de gravação pede "tela inteira".
+### Janela da câmera: mover, redimensionar e mudar o formato
+
+Na própria janelinha, durante a contagem ou a gravação:
+
+- **Arrastar** com um dedo: muda a posição.
+- **Pinça** com dois dedos: muda o tamanho.
+- **Dois toques:** troca o formato (círculo, quadrado, retângulo).
+
+Posição, tamanho e formato ficam salvos para a próxima gravação. Também dá para escolher o formato e o tamanho na tela do app, e o botão **Voltar a janela para o canto** redefine a posição. Se você mexer na janelinha durante a gravação, o movimento aparece no vídeo.
+
 - **Dois arquivos:** `tela_...mp4` e `camera_...mp4`, cada um com áudio.
 
 ### Permissão "Exibir sobre outros apps"

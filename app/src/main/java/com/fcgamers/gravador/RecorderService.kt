@@ -107,8 +107,7 @@ class RecorderService : Service() {
     private var cameraHandler: Handler? = null
 
     // Modo "vídeo único": janelinha com a câmera
-    private var previewView: TextureView? = null
-    private var previewSurface: Surface? = null
+    private var pip: CameraPip? = null
 
     private var countdownView: TextView? = null
 
@@ -356,8 +355,8 @@ class RecorderService : Service() {
     private fun startCameraPreviewOverlay() {
         val cm = getSystemService(CameraManager::class.java)
         val id = backCameraId(cm)
-        val ch = cm.getCameraCharacteristics(id)
-        val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        val chars = cm.getCameraCharacteristics(id)
+        val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             ?: throw IllegalStateException("Câmera sem formatos de vídeo")
         val sizes = map.getOutputSizes(SurfaceTexture::class.java).toList()
         val size = sizes
@@ -366,73 +365,16 @@ class RecorderService : Service() {
             ?: sizes.filter { it.width <= 1280 }.maxByOrNull { it.width * it.height }
             ?: sizes.first()
 
-        val rotation = displayRotation()
         val metrics = realMetrics()
-        val portrait = rotation == Surface.ROTATION_0 || rotation == Surface.ROTATION_180
-        val viewW: Int
-        val viewH: Int
-        if (portrait) {
-            viewW = (metrics.widthPixels * 0.32f).toInt()
-            viewH = viewW * size.width / size.height
-        } else {
-            viewW = (metrics.widthPixels * 0.25f).toInt()
-            viewH = viewW * size.height / size.width
-        }
-
-        val d = resources.displayMetrics.density
-        val tv = TextureView(this)
-        previewView = tv
-        val lp = WindowManager.LayoutParams(
-            viewW, viewH,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.BOTTOM or Gravity.END
-            x = (16 * d).toInt()
-            y = (96 * d).toInt()
-        }
-
-        tv.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
-                st.setDefaultBufferSize(size.width, size.height)
-                configureTransform(tv, viewW, viewH, size, rotation)
-                val surface = Surface(st)
-                previewSurface = surface
-                try {
-                    openBackCamera(cm, id) { device -> startPreviewSession(device, surface) }
-                } catch (e: Exception) {
-                    fail("Sem acesso à câmera: ${e.message}", e)
-                }
+        val newPip = CameraPip(this, size, displayRotation(), metrics.widthPixels, metrics.heightPixels) { surface ->
+            try {
+                openBackCamera(cm, id) { device -> startPreviewSession(device, surface) }
+            } catch (e: Exception) {
+                fail("Sem acesso à câmera: ${e.message}", e)
             }
-
-            override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {}
-            override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean = true
-            override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
         }
-
-        getSystemService(WindowManager::class.java).addView(tv, lp)
-    }
-
-    private fun configureTransform(tv: TextureView, viewW: Int, viewH: Int, size: Size, rotation: Int) {
-        val matrix = Matrix()
-        val viewRect = RectF(0f, 0f, viewW.toFloat(), viewH.toFloat())
-        val bufferRect = RectF(0f, 0f, size.height.toFloat(), size.width.toFloat())
-        val cx = viewRect.centerX()
-        val cy = viewRect.centerY()
-        if (rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270) {
-            bufferRect.offset(cx - bufferRect.centerX(), cy - bufferRect.centerY())
-            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
-            val scale = maxOf(viewH.toFloat() / size.height, viewW.toFloat() / size.width)
-            matrix.postScale(scale, scale, cx, cy)
-            matrix.postRotate(90f * (rotation - 2), cx, cy)
-        } else if (rotation == Surface.ROTATION_180) {
-            matrix.postRotate(180f, cx, cy)
-        }
-        tv.setTransform(matrix)
+        pip = newPip
+        newPip.show()
     }
 
     @Suppress("DEPRECATION")
@@ -608,12 +550,8 @@ class RecorderService : Service() {
         cameraHandler = null
 
         removeCountdownView()
-        previewView?.let {
-            try { getSystemService(WindowManager::class.java).removeView(it) } catch (_: Exception) {}
-        }
-        previewView = null
-        try { previewSurface?.release() } catch (_: Exception) {}
-        previewSurface = null
+        pip?.remove()
+        pip = null
 
         try {
             projectionCallback?.let { projection?.unregisterCallback(it) }
